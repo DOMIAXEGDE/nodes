@@ -1,12 +1,15 @@
 import pygame
 import json
 import os
+import importlib
+import importlib.util
 import sys
 import subprocess
 import base64
 import io
 import tempfile
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, simpledialog, colorchooser
 from PIL import Image
 from dataclasses import dataclass, field
@@ -38,6 +41,22 @@ FONT_BASE = pygame.font.SysFont("Arial", 14)
 FONT_HEADER = pygame.font.SysFont("Arial", 20, bold=True)
 FONT_MONO = pygame.font.SysFont("Courier New", 12)
 FONT_MONO_BOLD = pygame.font.SysFont("Courier New", 14, bold=True)
+
+def wrap_text(text: str, font: pygame.font.Font, max_px: int) -> list[str]:
+    """Return a list of substrings that each fit inside max_px."""
+    words = text.expandtabs(4).split(" ")
+    lines, buf = [], ""
+    for w in words:
+        test = f"{buf} {w}".strip()
+        if font.size(test)[0] <= max_px:
+            buf = test
+        else:
+            if buf:
+                lines.append(buf)
+            buf = w
+    if buf:
+        lines.append(buf)
+    return lines
 
 
 @dataclass
@@ -810,7 +829,7 @@ class CodeEditorModal:
         
         selection_start_pos, selection_end_pos = self.get_selection()
         char_w, _ = FONT_MONO.size(' ')
-        
+
         for i, line in enumerate(lines[self.scroll_y:self.scroll_y + max_visible_lines]):
             y_pos = i * font_height
             line_start_index = sum(len(l) + 1 for l in lines[:self.scroll_y + i])
@@ -1539,52 +1558,65 @@ class QuadtreeApp:
                                 pygame.draw.rect(self.canvas, ACCENT, bg_rect, 1)
                                 self.canvas.blit(tip_surf, bg_rect)
                     else:
-                        # Draw code with line numbers
-                        code_lines = code.split('\n')
-                        line_height = min(cell_size * 0.09, 16)
-                        max_lines = int((cell_size - 10) / line_height)
-                        padding = 8
-                        line_num_width = 20
-                        
-                        # Draw code background
-                        pygame.draw.rect(
-                            self.canvas,
-                            CODE_BG,
-                            (x + 2, y + 2, cell_size - 4, cell_size - 4)
-                        )
-                        
-                        # Draw line numbers background
-                        pygame.draw.rect(
-                            self.canvas,
-                            (234, 234, 234),
-                            (x + 2, y + 2, line_num_width, cell_size - 4)
-                        )
-                        
-                        # Draw code lines
-                        font = pygame.font.SysFont("Courier New", int(line_height * 0.75))
-                        
-                        for j, line in enumerate(code_lines[:max_lines]):
-                            # Line number
-                            line_num = font.render(str(j + 1), True, CODE_NUM)
+                        # --- clipping region (unchanged) ---
+                        cell_rect = pygame.Rect(x + 2, y + 2, cell_size - 4, cell_size - 4)
+                        old_clip  = self.canvas.get_clip()
+                        # ---------------- sizing constants (restore these!) ----------------
+                        code_lines     = code.split("\n")
+                        line_height    = min(cell_size * 0.09, 16)      # px per rendered row
+                        padding        = 8                               # top/left inset
+                        line_num_width = 20                              # gutter for numbers
+                        max_lines      = int((cell_size - 2*padding) / line_height)
+                        # -------------------------------------------------------------------
+
+                        self.canvas.set_clip(cell_rect)
+
+                        # --- background rectangles (unchanged) ---
+                        pygame.draw.rect(self.canvas, CODE_BG, (x + 2, y + 2, cell_size - 4, cell_size - 4))
+                        pygame.draw.rect(self.canvas, (234, 234, 234), (x + 2, y + 2, line_num_width, cell_size - 4))
+
+                        # --- wrapped code rendering ---
+                        font          = pygame.font.SysFont("Courier New", int(line_height * 0.75))
+                        line_idx      = 0
+                        y_pos         = y + padding
+                        for raw_line in code_lines:
+                            wrapped_segments = wrap_text(raw_line, font, cell_size - line_num_width - 10)
+                            for seg in wrapped_segments:
+                                if line_idx >= max_lines:          # vertical clip
+                                    break
+
+                                # line number
+                                ln_surf = font.render(str(line_idx + 1), True, CODE_NUM)
+                                self.canvas.blit(
+                                    ln_surf,
+                                    (x + line_num_width - 2 - ln_surf.get_width(), y_pos)
+                                )
+
+                                # code text
+                                code_surf = font.render(seg, True, (51, 51, 51))
+                                self.canvas.blit(
+                                    code_surf,
+                                    (x + line_num_width + 5, y_pos)
+                                )
+
+                                y_pos    += line_height
+                                line_idx += 1
+                            if line_idx >= max_lines:
+                                break
+
+                        # --- overflow ellipsis ---
+                        if line_idx < len(code_lines):
+                            dots = font.render("⋯", True, (102, 102, 102))
                             self.canvas.blit(
-                                line_num,
-                                (x + line_num_width - 2 - line_num.get_width(), y + padding + j * line_height)
+                                dots,
+                                (x + cell_size / 2 - dots.get_width() / 2, y + cell_size - padding - line_height)
                             )
-                            
-                            # Code line
-                            code_text = font.render(line, True, (51, 51, 51))
-                            self.canvas.blit(
-                                code_text,
-                                (x + line_num_width + 5, y + padding + j * line_height)
-                            )
-                        
-                        # If there are more lines than can be displayed
-                        if len(code_lines) > max_lines:
-                            more_text = font.render("...", True, (102, 102, 102))
-                            self.canvas.blit(
-                                more_text,
-                                (x + cell_size/2 - more_text.get_width()/2, y + cell_size - padding - line_height)
-                            )
+
+                        # --- restore previous clip ---
+                        self.canvas.set_clip(old_clip)
+
+
+
                 
                 elif payload.get('type') == 'image':
                     try:
