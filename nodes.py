@@ -1792,7 +1792,11 @@ class QuadtreeApp:
         
         # Draw UI elements
         for element in self.ui_elements:
-            element.draw(self.screen)
+            if element is not self.context_dropdown:
+                element.draw(self.screen)
+
+        # Draw the dropdown last so options appear on top
+        self.context_dropdown.draw(self.screen)
         
         # Draw main area background
         pygame.draw.rect(
