@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Node Matrix Quadtree (Client-side)</title>
+  <!-- Google Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Roboto+Mono:wght@400&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --primary: #4B5320;    /* Army Green */
+      --secondary: #BDB76B;  /* Dark Khaki */
+      --accent: #6C757D;     /* Slate Gray */
+      --bg: #F5F5DC;         /* Beige */
+      --surface: #FFFFFF;
+      --text: #333333;
+      --code-bg: #f7f7f0;
+      --code-num: #909090;
+      --font-base: 'Inter', sans-serif;
+      --font-code: 'Roboto Mono', monospace;
+      --radius: 6px;
+      --shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font-base);
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      overflow: hidden;
+    }
+    /* Sidebar for controls */
+    #sidebar {
+      width: 280px;
+      background: var(--surface);
+      padding: 20px;
+      border-right: 1px solid var(--accent);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+    }
+    header {
+      font-size: 1.3rem;
+      font-weight: 600;
+      margin: 0;
+      margin-bottom: 12px;
+      text-align: center;
+      color: var(--primary);
+    }
+    .section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .section label {
+      font-size: 0.9rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section input[type="number"],
+    .section input[type="range"],
+    .section select {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid var(--accent);
+      border-radius: var(--radius);
+      background: var(--bg);
+      font-size: 0.9rem;
+    }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+    .btn {
+      flex: 1;
+      padding: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      border: none;
+      border-radius: var(--radius);
+      background: var(--primary);
+      color: var(--surface);
+      cursor: pointer;
+      box-shadow: var(--shadow);
+      transition: background 0.2s ease;
+    }
+    .btn:hover {
+      background: var(--secondary);
+    }
+    /* Main canvas area */
+    #main {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #e3e3d9;
+    }
+    canvas {
+      background: var(--bg);
+      border: 2px solid var(--secondary);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      max-width: 100%;
+      max-height: 100%;
+    }
+    /* Context menu styling */
+    #context-menu {
+      position: absolute;
+      background: var(--surface);
+      border: 1px solid var(--secondary);
+      box-shadow: var(--shadow);
+      border-radius: var(--radius);
+      display: none;
+      z-index: 1000;
+      min-width: 160px;
+      overflow: hidden;
+    }
+    #context-menu div {
+      padding: 10px 14px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.2s;
+    }
+    #context-menu div:hover {
+      background: var(--bg);
+    }
+    #context-menu .separator {
+      height: 1px;
+      background: var(--accent);
+      margin: 4px 0;
+      opacity: 0.3;
+    }
+    /* Code editor modal */
+    #code-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-content {
+      background: var(--surface);
+      border-radius: var(--radius);
+      width: 80%;
+      max-width: 800px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .modal-header {
+      padding: 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--accent);
+    }
+    .modal-header h3 {
+      margin: 0;
+      color: var(--primary);
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1.5rem;
+      color: var(--accent);
+    }
+    .modal-body {
+      padding: 15px;
+      flex: 1;
+      overflow-y: auto;
+    }
+    .modal-footer {
+      padding: 15px;
+      border-top: 1px solid var(--accent);
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    #code-editor {
+      width: 100%;
+      min-height: 300px;
+      font-family: var(--font-code);
+      font-size: 14px;
+      padding: 10px;
+      border: 1px solid var(--accent);
+      border-radius: var(--radius);
+      resize: vertical;
+      tab-size: 2;
+    }
+    .modal-btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn-save {
+      background: var(--primary);
+      color: white;
+    }
+    .btn-cancel {
+      background: var(--accent);
+      color: white;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+</head>
+<body>
+  <div id="sidebar">
+    <header>Quadtree Controls</header>
+    <div class="section">
+      <label for="ctx-select">Context:</label>
+      <select id="ctx-select"></select>
+    </div>
+    <div class="toolbar">
+      <button class="btn" id="new-ctx-btn">＋ New</button>
+      <button class="btn" id="import-ctx-btn">⇪ Import</button>
+      <button class="btn" id="export-ctx-btn">⇩ Export</button>
+    </div>
+    <div class="section">
+      <label for="size-input">Quadtree Size (px):</label>
+      <input type="number" id="size-input" min="100" max="800" value="400" />
+    </div>
+    <div class="section">
+      <label for="depth-input">Depth: <span id="depth-label">0</span></label>
+      <input type="range" id="depth-input" min="0" max="4" value="0" />
+    </div>
+    <div class="toolbar">
+      <button class="btn" id="export-png-btn">🖼️ Export PNG</button>
+    </div>
+    <input type="file" id="import-input" accept="application/json" style="display:none;" />
+    <input type="file" id="image-input" accept="image/*" style="display:none;" />
+  </div>
+  <div id="main">
+    <canvas id="quadtree-canvas"></canvas>
+    <div id="context-menu">
+      <div data-action="change-color">🎨 Change Color</div>
+      <div data-action="add-text">T Add Text</div>
+      <div data-action="add-code">📝 Add Code</div>
+      <div data-action="edit-code">✏️ Edit Code</div>
+      <div data-action="add-image">🖼 Add Image</div>
+      <div data-action="paste-image">📋 Paste</div>
+      <div data-action="subdivide">↪ Subdivide</div>
+      <div class="separator"></div>
+      <div data-action="reset-cell">↩ Reset</div>
+    </div>
+  </div>
+  
+  <!-- Code Editor Modal -->
+  <div id="code-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Code Editor</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <textarea id="code-editor" spellcheck="false" wrap="off"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn btn-cancel">Cancel</button>
+        <button class="modal-btn btn-save">Save Code</button>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+  // --- Matrix Factory ---
+  function createEmptyMatrix(size, maxDepth) {
+    const layers = [];
+    for (let d = 0; d <= maxDepth; d++) {
+      const len = (1 << d) ** 2;
+      layers.push({ size: 1 << d, nodes: Array(len).fill(0) });
+    }
+    return { version: 1, quadtreeSize: size, maxDepth, layers, payloadPool: {} };
+  }
+
+  // --- UI Elements ---
+  const ctxSelect    = document.getElementById('ctx-select');
+  const newCtxBtn    = document.getElementById('new-ctx-btn');
+  const importCtxBtn = document.getElementById('import-ctx-btn');
+  const exportCtxBtn = document.getElementById('export-ctx-btn');
+  const exportPngBtn = document.getElementById('export-png-btn');
+  const importInput  = document.getElementById('import-input');
+  const sizeInput    = document.getElementById('size-input');
+  const depthInput   = document.getElementById('depth-input');
+  const depthLabel   = document.getElementById('depth-label');
+  const canvas       = document.getElementById('quadtree-canvas');
+  const ctx          = canvas.getContext('2d');
+  const imageInput   = document.getElementById('image-input');
+  const menu         = document.getElementById('context-menu');
+  const codeModal    = document.getElementById('code-modal');
+  const codeEditor   = document.getElementById('code-editor');
+  const codeClose    = document.querySelector('.modal-close');
+  const codeSave     = document.querySelector('.btn-save');
+  const codeCancel   = document.querySelector('.btn-cancel');
+
+  // In-memory contexts storage
+  let contexts = {};
+  let currentCtx = '';
+  let activeCell = null;
+  let waitingForPaste = false;
+  let editingCodeCell = null;
+
+  // --- Context Management ---
+  function createNewContext(id, size, maxDepth) {
+    contexts[id] = createEmptyMatrix(size, maxDepth);
+    return contexts[id];
+  }
+
+  function refreshContextList() {
+    const contextIds = Object.keys(contexts);
+    ctxSelect.innerHTML = contextIds.map(id => 
+      `<option value="${id}">${id}</option>`
+    ).join('');
+    
+    // If current context no longer exists, select the first available
+    if (!contextIds.includes(currentCtx)) {
+      currentCtx = contextIds[0] || '';
+      ctxSelect.value = currentCtx;
+    }
+  }
+
+  // --- Context List Management ---
+  newCtxBtn.onclick = () => {
+    const id = prompt('Enter new context id:');
+    if (!id) return;
+    createNewContext(id, parseInt(sizeInput.value), parseInt(depthInput.max));
+    refreshContextList();
+    ctxSelect.value = id;
+    loadContextUI(id);
+  };
+  
+  ctxSelect.onchange = () => loadContextUI(ctxSelect.value);
+
+  // --- Import/Export JSON ---
+  importCtxBtn.onclick = () => importInput.click();
+  importInput.onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const txt = await file.text();
+      const matrix = JSON.parse(txt);
+      
+      // Validate matrix structure
+      if (!matrix.layers || !matrix.quadtreeSize || !matrix.maxDepth) {
+        throw new Error("Invalid matrix format");
+      }
+      
+      const id = prompt('Save as context id:', file.name.replace(/\.json$/, ''));
+      if (!id) return;
+      
+      // Convert numeric arrays to regular arrays if imported from older format
+      matrix.layers.forEach(layer => {
+        if (layer.nodes instanceof Uint32Array) {
+          layer.nodes = Array.from(layer.nodes);
+        }
+      });
+      
+      contexts[id] = matrix;
+      refreshContextList();
+      ctxSelect.value = id;
+      loadContextUI(id);
+    } catch (err) {
+      alert(`Import error: ${err.message}`);
+    }
+    importInput.value = '';
+  };
+  
+  exportCtxBtn.onclick = () => {
+    if (!currentCtx) return;
+    const matrix = contexts[currentCtx];
+    const blob = new Blob([JSON.stringify(matrix, null, 2)], { type: 'application/json' });
+    saveAs(blob, `${currentCtx}.json`);
+  };
+
+  // --- Export PNG ---
+  exportPngBtn.onclick = () => {
+    if (!currentCtx) return;
+    canvas.toBlob(blob => saveAs(blob, `${currentCtx}.png`));
+  };
+
+  // --- Control Sync ---
+  sizeInput.onchange = () => {
+    if (!currentCtx) return;
+    contexts[currentCtx].quadtreeSize = parseInt(sizeInput.value);
+    render();
+  };
+  
+  depthInput.oninput = () => {
+    depthLabel.textContent = depthInput.value;
+    render();
+  };
+
+  // --- Load & Render Context ---
+  function loadContextUI(id) {
+    if (!id || !contexts[id]) return;
+    currentCtx = id;
+    const matrix = contexts[id];
+    
+    // Sync controls
+    sizeInput.value = matrix.quadtreeSize;
+    depthInput.max = matrix.maxDepth;
+    depthInput.value = Math.min(parseInt(depthInput.value), matrix.maxDepth);
+    depthLabel.textContent = depthInput.value;
+    render();
+  }
+
+  function render() {
+    if (!currentCtx || !contexts[currentCtx]) return;
+    
+    const matrix = contexts[currentCtx];
+    const d = parseInt(depthInput.value);
+    const S = matrix.quadtreeSize;
+    const layer = matrix.layers[d];
+    const cell = S / layer.size;
+    
+    canvas.width = canvas.height = S;
+    ctx.clearRect(0, 0, S, S);
+    
+    // Draw cells
+    layer.nodes.forEach((color, i) => {
+      if (color) {
+        ctx.fillStyle = `#${color.toString(16).padStart(6,'0')}`;
+        const x = (i % layer.size) * cell;
+        const y = Math.floor(i / layer.size) * cell;
+        ctx.fillRect(x, y, cell, cell);
+      }
+      
+      // Draw payloads: text, code, or image
+      const key = `${d}:${i}`;
+      const payload = matrix.payloadPool[key];
+      if (payload) {
+        const x = (i % layer.size) * cell;
+        const y = Math.floor(i / layer.size) * cell;
+        
+        if (payload.type === 'text') {
+          ctx.fillStyle = payload.color;
+          ctx.font = `${cell * 0.3}px monospace`;
+          ctx.textBaseline = 'middle';
+          ctx.textAlign = 'center';
+          ctx.fillText(payload.text, x + cell/2, y + cell/2);
+        } else if (payload.type === 'code') {
+          // For code cells
+          if (cell < 100) {
+            // Too small to display code, just show code symbol
+            ctx.fillStyle = '#333';
+            ctx.font = `bold ${cell * 0.5}px monospace`;
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'center';
+            ctx.fillText('{ }', x + cell/2, y + cell/2);
+          } else {
+            // Draw code with line numbers
+            const codeLines = payload.code.split('\n');
+            const lineHeight = Math.min(cell * 0.09, 16);
+            const maxLines = Math.floor((cell - 10) / lineHeight);
+            const padding = 8;
+            const lineNumWidth = 20;
+            
+            // Draw code background
+            ctx.fillStyle = 'var(--code-bg)';
+            ctx.fillRect(x + 2, y + 2, cell - 4, cell - 4);
+            
+            // Draw line numbers background
+            ctx.fillStyle = '#eaeaea';
+            ctx.fillRect(x + 2, y + 2, lineNumWidth, cell - 4);
+            
+            // Draw code
+            ctx.font = `${lineHeight * 0.75}px var(--font-code)`;
+            ctx.textBaseline = 'top';
+            
+            for (let j = 0; j < Math.min(codeLines.length, maxLines); j++) {
+              // Line number
+              ctx.fillStyle = 'var(--code-num)';
+              ctx.textAlign = 'right';
+              ctx.fillText(j + 1, x + lineNumWidth - 2, y + padding + j * lineHeight);
+              
+              // Code line
+              ctx.fillStyle = '#333';
+              ctx.textAlign = 'left';
+              ctx.fillText(codeLines[j], x + lineNumWidth + 5, y + padding + j * lineHeight);
+            }
+            
+            // If there are more lines than can be displayed
+            if (codeLines.length > maxLines) {
+              ctx.fillStyle = '#666';
+              ctx.textAlign = 'center';
+              ctx.fillText('...', x + cell/2, y + cell - padding);
+            }
+          }
+        } else if (payload.type === 'image') {
+          const img = new Image();
+          img.onload = () => { ctx.drawImage(img, x, y, cell, cell); };
+          img.src = payload.data;
+        }
+      }
+    });
+    
+    // Grid lines
+    ctx.strokeStyle = '#ccc';
+    for (let i = 0; i <= layer.size; i++) {
+      const p = i * cell;
+      ctx.beginPath();
+      ctx.moveTo(p, 0); ctx.lineTo(p, S);
+      ctx.moveTo(0, p); ctx.lineTo(S, p);
+      ctx.stroke();
+    }
+  }
+
+  // --- Context Menu & Actions ---
+  canvas.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    if (!currentCtx || !contexts[currentCtx]) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const d = parseInt(depthInput.value);
+    const matrix = contexts[currentCtx];
+    const layer = matrix.layers[d];
+    const cell = matrix.quadtreeSize / layer.size;
+    const cx = Math.floor(x / cell);
+    const cy = Math.floor(y / cell);
+    const idx = cy * layer.size + cx;
+    
+    activeCell = { d, cx, cy, idx };
+    
+    // Show/hide Edit Code option based on cell content
+    const key = `${d}:${idx}`;
+    const hasCode = matrix.payloadPool[key]?.type === 'code';
+    menu.querySelector('[data-action="edit-code"]').style.display = hasCode ? 'flex' : 'none';
+    
+    menu.style.top = `${e.pageY}px`;
+    menu.style.left = `${e.pageX}px`;
+    menu.style.display = 'block';
+  });
+  
+  document.addEventListener('click', e => {
+    if (!menu.contains(e.target) && e.target !== canvas) {
+      menu.style.display = 'none';
+    }
+  });
+
+  menu.querySelectorAll('div[data-action]').forEach(item => {
+    item.addEventListener('click', () => {
+      const action = item.getAttribute('data-action');
+      menu.style.display = 'none';
+      
+      if (!currentCtx || !activeCell) return;
+      const matrix = contexts[currentCtx];
+      const { d, idx } = activeCell;
+      
+      switch (action) {
+        case 'change-color': {
+          const col = prompt('Pick a hex color (e.g. #00ff00):');
+          if (!col) return;
+          const rgb = parseInt(col.replace(/^#/, ''), 16);
+          matrix.layers[d].nodes[idx] = rgb;
+          break;
+        }
+        case 'add-text': {
+          const text = prompt('Enter text:');
+          if (!text) return;
+          const color = prompt('Text color (hex):', '#000000');
+          matrix.payloadPool[`${d}:${idx}`] = { type: 'text', text, color };
+          break;
+        }
+        case 'add-code': {
+          editingCodeCell = { d, idx };
+          codeEditor.value = '';
+          codeModal.style.display = 'flex';
+          codeEditor.focus();
+          break;
+        }
+        case 'edit-code': {
+          const key = `${d}:${idx}`;
+          const payload = matrix.payloadPool[key];
+          if (payload?.type === 'code') {
+            editingCodeCell = { d, idx };
+            codeEditor.value = payload.code;
+            codeModal.style.display = 'flex';
+            codeEditor.focus();
+          }
+          break;
+        }
+        case 'add-image': {
+          imageInput.click();
+          break;
+        }
+        case 'paste-image': {
+          waitingForPaste = true;
+          alert('Press Ctrl+V to paste an image');
+          break;
+        }
+        case 'subdivide': {
+          if (d < matrix.maxDepth) {
+            const parentKey = `${d}:${idx}`;
+            const color = matrix.layers[d].nodes[idx];
+            const payload = matrix.payloadPool[parentKey];
+            const d1 = d + 1;
+            const layer1 = matrix.layers[d1];
+            const baseX = activeCell.cx * 2;
+            const baseY = activeCell.cy * 2;
+            [0,1].forEach(dy => {
+              [0,1].forEach(dx => {
+                const cx1 = baseX + dx;
+                const cy1 = baseY + dy;
+                const idx1 = cy1 * layer1.size + cx1;
+                layer1.nodes[idx1] = color;
+                if (payload) {
+                  matrix.payloadPool[`${d1}:${idx1}`] = JSON.parse(JSON.stringify(payload));
+                }
+              });
+            });
+          }
+          break;
+        }
+        case 'reset-cell': {
+          matrix.layers[d].nodes[idx] = 0;
+          delete matrix.payloadPool[`${d}:${idx}`];
+          break;
+        }
+      }
+      render();
+    });
+  });
+
+  // --- Code Editor Handlers ---
+  codeClose.onclick = () => {
+    codeModal.style.display = 'none';
+    editingCodeCell = null;
+  };
+  
+  codeCancel.onclick = () => {
+    codeModal.style.display = 'none';
+    editingCodeCell = null;
+  };
+  
+  codeSave.onclick = () => {
+    if (editingCodeCell) {
+      const { d, idx } = editingCodeCell;
+      const code = codeEditor.value;
+      contexts[currentCtx].payloadPool[`${d}:${idx}`] = { type: 'code', code };
+      codeModal.style.display = 'none';
+      editingCodeCell = null;
+      render();
+    }
+  };
+  
+  // Allow tab key in textarea
+  codeEditor.addEventListener('keydown', function(e) {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const start = this.selectionStart;
+      const end = this.selectionEnd;
+      this.value = this.value.substring(0, start) + '\t' + this.value.substring(end);
+      this.selectionStart = this.selectionEnd = start + 1;
+    }
+  });
+  
+  // Click outside modal to close
+  codeModal.addEventListener('click', function(e) {
+    if (e.target === codeModal) {
+      codeModal.style.display = 'none';
+      editingCodeCell = null;
+    }
+  });
+
+  // --- Image Upload Handler ---
+  imageInput.onchange = async e => {
+    const file = e.target.files[0];
+    if (!file || !currentCtx || !activeCell) return;
+    
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const data = ev.target.result;
+      const { d, idx } = activeCell;
+      contexts[currentCtx].payloadPool[`${d}:${idx}`] = { type: 'image', data };
+      render();
+    };
+    reader.readAsDataURL(file);
+    imageInput.value = '';
+  };
+
+  // --- Clipboard Paste Handler ---
+  document.addEventListener('paste', e => {
+    if (!waitingForPaste || !activeCell || !currentCtx) return;
+    
+    const items = e.clipboardData.items;
+    for (const it of items) {
+      if (it.type.indexOf('image') === 0) {
+        const blob = it.getAsFile();
+        const reader = new FileReader();
+        reader.onload = ev => {
+          const data = ev.target.result;
+          const { d, idx } = activeCell;
+          contexts[currentCtx].payloadPool[`${d}:${idx}`] = { type: 'image', data };
+          render();
+        };
+        reader.readAsDataURL(blob);
+        waitingForPaste = false;
+        menu.style.display = 'none';
+        e.preventDefault();
+        break;
+      }
+    }
+  });
+
+  // --- Bootstrap ---
+  (function init() {
+    // Create default context
+    const defaultId = 'default';
+    createNewContext(defaultId, parseInt(sizeInput.value), parseInt(depthInput.max));
+    refreshContextList();
+    ctxSelect.value = defaultId;
+    currentCtx = defaultId;
+    loadContextUI(defaultId);
+  })();
+  </script>
+</body>
+</html>
