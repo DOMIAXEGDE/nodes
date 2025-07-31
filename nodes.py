@@ -62,32 +62,38 @@ class Button:
         self.action = action
         self.font = font
         self.hovered = False
-        
+        self.pressed = False
+
     def draw(self, surface):
-        color = BUTTON_HOVER if self.hovered else PRIMARY
-        
-        # Draw button background
+        if self.pressed:
+            color = SECONDARY
+        else:
+            color = BUTTON_HOVER if self.hovered else PRIMARY
+
         pygame.draw.rect(surface, color, self.rect, border_radius=4)
-        
-        # Draw text
+
         text_surf = self.font.render(self.text, True, SURFACE)
         text_rect = text_surf.get_rect(center=self.rect.center)
         surface.blit(text_surf, text_rect)
-    
+
     def check_hover(self, pos):
         self.hovered = self.rect.collidepoint(pos)
         return self.hovered
-    
+
     def handle_event(self, event):
-        # Only look at left-button clicks
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # If the click was inside our rect …
             if self.rect.collidepoint(event.pos):
-                # … perform our own action if one was given …
+                self.pressed = True
+                return False
+
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self.pressed and self.rect.collidepoint(event.pos):
+                self.pressed = False
                 if self.action:
                     return self.action()
-                # … otherwise just tell the caller “I was clicked”
                 return True
+            self.pressed = False
+
         return False
 
 
@@ -98,10 +104,11 @@ class DropDown:
         self.selected = ""
         self.open = False
         self.hovered_index = -1
+        self.hovered = False
         
     def draw(self, surface):
-        # Draw main box
-        pygame.draw.rect(surface, SURFACE, self.rect, border_radius=4)
+        box_color = BUTTON_HOVER if self.hovered else SURFACE
+        pygame.draw.rect(surface, box_color, self.rect, border_radius=4)
         pygame.draw.rect(surface, ACCENT, self.rect, width=1, border_radius=4)
         
         # Draw selected option
@@ -148,8 +155,11 @@ class DropDown:
     
     def check_hover(self, pos):
         if self.rect.collidepoint(pos):
+            self.hovered = True
             return True
-        
+        else:
+            self.hovered = False
+
         if self.open:
             option_height = 25
             for i, _ in enumerate(self.options):
@@ -160,11 +170,15 @@ class DropDown:
                     option_height
                 )
                 if option_rect.collidepoint(pos):
+                    # Skip separators
+                    if self.options[i].startswith("---"):
+                        self.hovered_index = -1
+                        return True
                     self.hovered_index = i
                     return True
-            
+
             self.hovered_index = -1
-        
+
         return False
     
     def handle_event(self, event):
@@ -183,6 +197,9 @@ class DropDown:
                         option_height
                     )
                     if option_rect.collidepoint(event.pos):
+                        if option.startswith("---"):
+                            self.open = False
+                            return False
                         self.selected = option
                         self.open = False
                         return option
@@ -201,6 +218,7 @@ class Slider:
         self.max = max_val
         self.value = value
         self.dragging = False
+        self.hovered = False
         self.label = label
         
     def draw(self, surface):
@@ -216,9 +234,10 @@ class Slider:
         # Calculate handle position
         handle_x = self.rect.x + int((self.value - self.min) / (self.max - self.min) * self.rect.width)
         handle_pos = (handle_x, self.rect.centery)
-        
-        # Draw handle
-        pygame.draw.circle(surface, PRIMARY, handle_pos, self.handle_radius)
+
+        radius = self.handle_radius + 2 if (self.hovered or self.dragging) else self.handle_radius
+        color = SECONDARY if (self.hovered or self.dragging) else PRIMARY
+        pygame.draw.circle(surface, color, handle_pos, radius)
         
         # Draw label and value
         if self.label:
@@ -236,24 +255,27 @@ class Slider:
             self.handle_radius * 2,
             self.handle_radius * 2
         )
-        return handle_rect.collidepoint(pos)
+        self.hovered = handle_rect.collidepoint(pos)
+        return self.hovered
     
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.check_hover(event.pos):
                 self.dragging = True
-                return True
-        
+                return False
+
         elif event.type == pygame.MOUSEBUTTONUP:
             if self.dragging:
                 self.dragging = False
-                return True
-        
-        elif event.type == pygame.MOUSEMOTION and self.dragging:
-            # Update value based on mouse position
-            relative_x = max(0, min(event.pos[0] - self.rect.x, self.rect.width))
-            self.value = self.min + int((relative_x / self.rect.width) * (self.max - self.min))
-            return self.value
+                return False
+
+        elif event.type == pygame.MOUSEMOTION:
+            self.check_hover(event.pos)
+            if self.dragging:
+                # Update value based on mouse position
+                relative_x = max(0, min(event.pos[0] - self.rect.x, self.rect.width))
+                self.value = self.min + int((relative_x / self.rect.width) * (self.max - self.min))
+                return self.value
         
         return False
 
@@ -263,6 +285,8 @@ class TextInput:
         self.rect = pygame.Rect(x, y, width, height)
         self.text = default_text
         self.active = False
+        self.cursor_pos = len(default_text)
+        self.cursor_visible = True
         self.label = label
         
     def draw(self, surface):
@@ -275,6 +299,15 @@ class TextInput:
         text_surf = FONT_BASE.render(self.text, True, TEXT)
         text_rect = text_surf.get_rect(midleft=(self.rect.x + 10, self.rect.centery))
         surface.blit(text_surf, text_rect)
+
+        if self.active:
+            # Simple blinking cursor based on time
+            self.cursor_visible = (pygame.time.get_ticks() // 500) % 2 == 0
+            if self.cursor_visible:
+                cursor_x = text_rect.right + 1
+                top = self.rect.y + 5
+                bottom = self.rect.bottom - 5
+                pygame.draw.line(surface, TEXT, (cursor_x, top), (cursor_x, bottom))
         
         # Draw label
         if self.label:
@@ -286,6 +319,7 @@ class TextInput:
         if event.type == pygame.MOUSEBUTTONDOWN:
             if self.rect.collidepoint(event.pos):
                 self.active = True
+                self.cursor_pos = len(self.text)
             else:
                 self.active = False
             return self.active
@@ -293,12 +327,14 @@ class TextInput:
         if event.type == pygame.KEYDOWN and self.active:
             if event.key == pygame.K_RETURN:
                 self.active = False
-                return self.text  # Return the final text on Enter
+                return self.text
             elif event.key == pygame.K_BACKSPACE:
                 self.text = self.text[:-1]
+                self.cursor_pos = max(0, self.cursor_pos - 1)
             else:
                 self.text += event.unicode
-            return True  # Indicate event was handled
+                self.cursor_pos += len(event.unicode)
+            return False
 
         return False
 
@@ -363,6 +399,9 @@ class ContextMenu:
                 option_height
             )
             if option_rect.collidepoint(pos):
+                if self.options[i][0:3] == "---":
+                    self.hovered_index = -1
+                    return True
                 self.hovered_index = i
                 return True
         
@@ -375,7 +414,7 @@ class ContextMenu:
         
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             option_height = 30
-            for i, (_, action) in enumerate(self.options):
+            for i, (text, action) in enumerate(self.options):
                 option_rect = pygame.Rect(
                     self.rect.x,
                     self.rect.y + i * option_height,
@@ -383,6 +422,8 @@ class ContextMenu:
                     option_height
                 )
                 if option_rect.collidepoint(event.pos):
+                    if text.startswith("---"):
+                        return False
                     return action
         
         return False
@@ -878,6 +919,32 @@ class CodeEditorModal:
             if event.key == pygame.K_a and pygame.key.get_mods() & pygame.KMOD_CTRL:
                 self.selection_start = 0
                 self.cursor_pos = len(self.code)
+            elif event.key == pygame.K_LEFT:
+                if self.cursor_pos > 0:
+                    self.cursor_pos -= 1
+            elif event.key == pygame.K_RIGHT:
+                if self.cursor_pos < len(self.code):
+                    self.cursor_pos += 1
+            elif event.key == pygame.K_HOME:
+                row, col = self.get_cursor_row_col()
+                self.cursor_pos -= col
+            elif event.key == pygame.K_END:
+                row, col = self.get_cursor_row_col()
+                line_len = len(self.get_lines()[row])
+                self.cursor_pos += line_len - col
+            elif event.key == pygame.K_UP:
+                row, col = self.get_cursor_row_col()
+                if row > 0:
+                    prev_len = len(self.get_lines()[row-1])
+                    prev_start = sum(len(l) + 1 for l in self.get_lines()[:row-1])
+                    self.cursor_pos = prev_start + min(prev_len, col)
+            elif event.key == pygame.K_DOWN:
+                row, col = self.get_cursor_row_col()
+                lines = self.get_lines()
+                if row < len(lines) - 1:
+                    next_len = len(lines[row+1])
+                    next_start = sum(len(l) + 1 for l in lines[:row+1])
+                    self.cursor_pos = next_start + min(next_len, col)
             elif event.key == pygame.K_BACKSPACE:
                 if self.selection_start != self.cursor_pos: self.delete_selection()
                 elif self.cursor_pos > 0:
@@ -1459,6 +1526,18 @@ class QuadtreeApp:
                         ))
                         
                         self.canvas.blit(text_surf, text_rect)
+
+                        if self.hover_pos:
+                            hx, hy = self.hover_pos
+                            if SIDEBAR_WIDTH + x <= hx <= SIDEBAR_WIDTH + x + cell_size and y <= hy <= y + cell_size:
+                                preview = code.split('\n', 1)[0][:30]
+                                tip_font = FONT_MONO
+                                tip_surf = tip_font.render(preview, True, TEXT)
+                                bg_rect = tip_surf.get_rect()
+                                bg_rect.topleft = (x, y - bg_rect.height - 2)
+                                pygame.draw.rect(self.canvas, SURFACE, bg_rect)
+                                pygame.draw.rect(self.canvas, ACCENT, bg_rect, 1)
+                                self.canvas.blit(tip_surf, bg_rect)
                     else:
                         # Draw code with line numbers
                         code_lines = code.split('\n')
@@ -1631,13 +1710,13 @@ class QuadtreeApp:
             # Handle context menu if it's active
             if self.context_menu:
                 action = self.context_menu.handle_event(event)
-                # If an action was returned, execute it and close the menu
                 if action:
                     action()
                     self.context_menu = None
-                # Otherwise (elif), check if the user clicked outside the menu to close it
-                elif event.type == pygame.MOUSEBUTTONDOWN and not self.context_menu.rect.collidepoint(event.pos):
-                    self.context_menu = None
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if (not self.context_menu.rect.collidepoint(event.pos) or
+                        self.context_menu.hovered_index == -1):
+                        self.context_menu = None
                 
                 continue # Event was related to the context menu, so we skip the rest
 
@@ -1666,7 +1745,7 @@ class QuadtreeApp:
                     elif element == self.size_input:
                         try:
                             new_size = int(result)
-                            if 100 <= new_size <= 800:
+                            if 100 <= new_size <= SCREEN_HEIGHT:
                                 self.quadtree_size = new_size
                                 if self.matrix.current_ctx:
                                     self.matrix.contexts[self.matrix.current_ctx].quadtree_size = new_size
